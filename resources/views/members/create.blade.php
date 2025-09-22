@@ -1,44 +1,283 @@
 @extends('layouts.app')
 
 @section('content')
-<h3>Register Member</h3>
+@php use Illuminate\Support\Str; @endphp
 
-<form method="post" enctype="multipart/form-data" action="{{ route('members.store') }}" class="grid">
-  @csrf
-  <label>Name<input name="name" value="{{ old('name') }}" required></label>
-  <label>Email<input type="email" name="email" value="{{ old('email') }}" required></label>
-  <label>Phone<input name="phone" value="{{ old('phone') }}"></label>
+<link rel="stylesheet" href="{{ asset('css/member-edit.css') }}"> {{-- optional external stylesheet --}}
 
-  <label>Referral Code (optional)
-    <input name="referral_code_input" value="{{ old('referral_code_input') }}" placeholder="Enter an existing member's code">
-  </label>
+<style>
+/* ---- MEMBER EDIT PAGE (class-based) ---- */
 
-  <fieldset>
-    <legend>Addresses</legend>
-    <div id="addresses">
-      <div class="address">
-        <label>Type
-          <select name="addresses[0][address_type_id]" required>
-            @foreach($addressTypes as $t)
-              <option value="{{ $t->id }}">{{ $t->name }}</option>
-            @endforeach
-          </select>
-        </label>
-        <label>Line 1<input name="addresses[0][line1]" required></label>
-        <label>Line 2<input name="addresses[0][line2]"></label>
-        <label>City<input name="addresses[0][city]" required></label>
-        <label>State<input name="addresses[0][state]"></label>
-        <label>Postal Code<input name="addresses[0][postal_code]"></label>
-        <label>Country<input name="addresses[0][country]" value="MY"></label>
-      </div>
+/* page container */
+.edit-container {
+  max-width: 1200px;
+  margin: 18px auto;
+  padding: 20px;
+  background: #2a3140;
+  border-radius: 12px;
+  box-shadow: 0 6px 18px rgba(13, 38, 76, 0.04);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+}
+
+/* header */
+.edit-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.edit-header h1 { font-size: 1.25rem; margin:0; }
+
+/* layout: two columns */
+.edit-body {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 20px;
+}
+
+/* fallback for small screens */
+@media (max-width: 820px) {
+  .edit-body { grid-template-columns: 1fr; }
+}
+
+/* left form column */
+.member-form { padding-right: 4px; }
+.field-row { display:flex; gap:12px; margin-bottom:12px; }
+.field { flex:1; display:flex; flex-direction:column; }
+.field label { font-size:0.85rem; margin-bottom:6px; color:#fff; }
+.field input[type="text"],
+.field input[type="email"],
+.field input[type="tel"],
+.field select,
+.field textarea {
+  padding:10px 12px;
+  border:1px solid #e6e6e6;
+  border-radius:8px;
+  font-size:0.95rem;
+  background:#5d6b89;
+}
+
+/* addresses */
+.addresses { margin-top:14px; display:flex; flex-direction:column; gap:12px; }
+.address-card {
+  gap:12px; align-items:flex-start;
+  padding:12px; border:1px solid #f0f0f0; border-radius:8px; background:#2a3140;
+}
+.address-left { flex:1; }
+.address-right { flex-shrink:0; display:flex; flex-direction:column; gap:8px; align-items:center; }
+
+/* small helper text */
+.helper { font-size:0.8rem; color:#666; margin-top:6px; }
+
+/* right column (avatar + actions) */
+.side-panel {
+  position:relative;
+  padding:12px;
+  border:1px dashed #f0f0f0;
+  border-radius:10px;
+  text-align:center;
+}
+.avatar-box {
+  width:160px; height:160px; margin:0 auto 10px; border-radius:50%; overflow:hidden; background:#dfe6ee;
+  display:flex; align-items:center; justify-content:center; border:3px solid #eef4fb;
+}
+.avatar-box img { width:100%; height:100%; object-fit:cover; display:block; }
+
+/* file input custom */
+.input-file {
+  display:block;
+  margin:1px;
+  width:100%;
+  padding:8px 10px;
+  border-radius:8px;
+  border:1px solid #e6e6e6;
+  background:#fafafa;
+}
+.small-btn {
+  display:inline-block;
+  padding:8px 12px;
+  border-radius:8px;
+  border:none;
+  background:#f3f4f6;
+  cursor:pointer;
+  font-weight:600;
+  color:#111827;
+}
+.small-btn.danger { background:#fee2e2; color:#b91c1c; }
+
+/* primary action */
+.actions { margin-top:16px; display:flex; gap:10px; justify-content:center; }
+.btn-primary {
+  display:inline-block; padding:10px 18px; border-radius:10px; background:#2563eb; color:#fff; text-decoration:none;
+  font-weight:700; border:none; cursor:pointer;
+}
+.btn-ghost { background:transparent; padding:10px 16px; border-radius:8px; }
+
+/* responsive address proof thumbnail */
+.proof-thumb { height:240px; border-radius:6px; overflow:hidden; border:1px solid #e8e8e8; display:flex; align-items:center; justify-content:center; background:#fafafa; }
+.proof-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+
+/* small text link */
+.link-muted { color:#2563eb; text-decoration:underline; font-size:0.9rem; }
+
+/* error list */
+.errors { background:#fff4f4; color:#7f1d1d; border:1px solid #fee2e2; padding:10px; border-radius:8px; margin-bottom:12px; }
+</style>
+
+<div class="edit-container">
+
+  <div class="edit-header">
+    <h1>Create New Member</h1>
+  </div>
+
+  @if ($errors->any())
+    <div class="errors">
+      <strong>There were some problems with your input:</strong>
+      <ul>
+        @foreach ($errors->all() as $error)
+          <li>{{ $error }}</li>
+        @endforeach
+      </ul>
     </div>
-  </fieldset>
+  @endif
 
-  <label>Profile Image (jpg/png, ≤2MB) <input type="file" name="profile_image" accept=".jpg,.jpeg,.png"></label>
-  <label>Proof of Address (jpg/png/pdf, ≤4MB) <input type="file" name="proof_of_address" accept=".jpg,.jpeg,.png,.pdf"></label>
+  <form method="post" action="{{ route('members.store') }}" enctype="multipart/form-data">
+    @csrf @method('post')
+    
+    <div class="edit-body">
+      {{-- LEFT: form fields --}}
+      <div class="member-form">
+        <div class="field-row">
+          <div class="field">
+            <label for="name">Full name</label>
+            <input id="name" name="name" type="text" required>
+          </div>
+          <div class="field">
+            <label for="phone">Phone</label>
+            <input id="phone" name="phone" type="tel">
+          </div>
+        </div>
 
-  <button type="submit">Create</button>
-</form>
+        <div class="field-row">
+          <div class="field">
+            <label for="email">Email</label>
+            <input id="email" name="email" type="email" required>
+          </div>
+          <div class="field">
+            <label for="referral_code">Referral code</label>
+            <input id="referral_code" name="referral_code_input" type="text">
+          </div>
+        </div>
+
+        {{-- Addresses --}}
+        <div class="addresses">
+
+            <div class="address-card">
+              <div class="address-left">
+                <div class="field-row">
+                  <div class="field">
+                    <label>Type</label>
+                    <select name="addresses[0][address_type_id]">
+                      @foreach($addressTypes as $t)
+                        <option value="{{ $t->id }}">{{ $t->name }}</option>
+                      @endforeach
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>Postal Code</label>
+                    <input type="text" name="addresses[0][postal_code]">
+                  </div>
+                </div>
+
+                <div class="field">
+                  <label>Line 1</label>
+                  <input type="text" name="addresses[0][line1]">
+                </div>
+                <div class="field" style="margin-top:8px;">
+                  <label>Line 2</label>
+                  <input type="text" name="addresses[0][line2]">
+                </div>
+                <div class="field-row" style="margin-top:8px;">
+                  <div class="field">
+                    <label>City</label>
+                    <input type="text" name="addresses[0][city]">
+                  </div>
+                  <div class="field">
+                    <label>State</label>
+                    <input type="text" name="addresses[0][state]">
+                  </div>
+                </div>
+
+                {{-- hidden id to allow update --}}
+                <input type="hidden" name="addresses[0][id]">
+                <div class="helper">You can upload a proof image for this address on the right.</div>
+              </div>
+
+              <div class="address-right">
+                {{-- Show existing proof --}}
+                <div class="proof-thumb" id="proof-preview-0">
+                </div>
+                <input class="input-file" type="file" name="proof_of_address"
+                accept=".jpg,.jpeg,.png" onchange="previewProof(event, 0)">
+              </div>
+            </div>
+
+        </div>
+
+      </div>
+
+      {{-- RIGHT: avatar & actions --}}
+      <aside class="side-panel">
+        <div class="avatar-box" id="avatarPreview">
+            <div style="font-size:1.6rem;color:#475569;font-weight:600;">
+            </div>
+        </div>
+
+        <label for="profile_image" style="display:block;margin-bottom:8px;font-weight:600;">Profile image</label>
+        <input id="profile_image" class="input-file" type="file" name="profile_image" accept=".jpg,.jpeg,.png" onchange="previewAvatar(event)">
+
+        <div class="actions">
+          <a href="{{ route('members.index') }}" class="btn-ghost">Back</a>
+          <button type="submit" class="btn-primary">Save changes</button>
+        </div>
+      </aside>
+    </div>
+  </form>
+</div>
+
+{{-- JS: preview avatar + proof file thumbnails --}}
+<script>
+function previewAvatar(e){
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    const box = document.getElementById('avatarPreview');
+    box.innerHTML = '<img src="' + ev.target.result + '" alt="Avatar preview">';
+  };
+  reader.readAsDataURL(file);
+}
+
+function previewProof(e, idx){
+  const file = e.target.files[0];
+  const container = document.getElementById('proof-preview-' + idx);
+  if (!file || !container) return;
+
+  // For images, show preview; for pdf show icon
+  const isImage = file.type.startsWith('image/');
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    if (isImage) {
+      container.innerHTML = '<img src="' + ev.target.result + '" alt="Proof preview">';
+    } else {
+      container.innerHTML = '<div style="font-size:0.9rem;color:#666">PDF selected</div>';
+    }
+  };
+  if (isImage) reader.readAsDataURL(file);
+  else container.innerHTML = '<div style="font-size:0.9rem;color:#666">PDF selected</div>';
+}
+</script>
 
 @include('members.partials.errors')
 @endsection
