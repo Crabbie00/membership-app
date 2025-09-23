@@ -8,7 +8,7 @@
 </head>
 <body class="container">
   <nav>
-    <ul><li><strong><a href="{{ route('members.index') }}">Members</a></strong></li></ul>
+    <ul><li><strong><a href="{{ route('members.index') }}">Home</a></strong></li></ul>
     <ul>
       <li><a href="{{ route('members.create') }}">Register Member</a></li>
       <li><a href="{{ route('members.export', request()->only('q','ref')) }}">Export CSV</a></li>

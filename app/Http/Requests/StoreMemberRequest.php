@@ -26,7 +26,7 @@ class StoreMemberRequest extends FormRequest
 
             // files
             'profile_image'      => ['nullable','file','mimes:jpg,jpeg,png','max:2048'],
-            'proof_of_address'   => ['nullable','file','mimes:jpg,jpeg,png,pdf','max:4096'],
+            'proof_of_address'   => ['nullable','file','mimes:jpg,jpeg,png','max:4096'],
         ];
     }
 }

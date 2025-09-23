@@ -12,33 +12,19 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 
 class MemberController extends Controller
 {
-    public function index(Request $request)
+   public function index(Request $request)
     {
-        $q = $request->string('q')->toString();
-        $ref = $request->string('ref')->toString();
+        $q   = $request->input('q');
+        $ref = $request->input('ref');
 
-        $members = Member::query()
-            ->with(['referrer'])
-            ->when($q, function ($query) use ($q) {
-                $query->where(function ($w) use ($q) {
-                    $w->where('name','like',"%{$q}%")
-                      ->orWhere('email','like',"%{$q}%");
-                });
-            })
-            ->when($ref, function ($query) use ($ref) {
-                $query->where('referral_code','like',"%{$ref}%")
-                      ->orWhereHas('referrer', function ($r) use ($ref) {
-                          $r->where('name','like',"%{$ref}%")
-                            ->orWhere('email','like',"%{$ref}%")
-                            ->orWhere('referral_code','like',"%{$ref}%");
-                      });
-            })
-            ->orderByDesc('id')
-            ->paginate(10)
-            ->withQueryString();
+        $members = Member::filter($q, $ref)   
+                     ->paginate(10)      
+                     ->withQueryString(); 
 
         return view('members.index', compact('members','q','ref'));
     }
@@ -48,6 +34,21 @@ class MemberController extends Controller
         $addressTypes = AddressType::where('status', true)->orderBy('name')->get();
         return view('members.create', compact('addressTypes'));
     }
+
+
+    public function show(Member $member)
+    {
+        $member->load(['addresses.type', 'documents', 'referrer']);
+        return view('members.show', compact('member'));
+    }
+
+    public function edit(Member $member)
+    {
+        $member->load(['addresses.type', 'documents']);
+        $addressTypes = AddressType::where('status', true)->orderBy('name')->get();
+        return view('members.edit', compact('member','addressTypes'));
+    }
+
 
     public function store(StoreMemberRequest $request)
     {
@@ -76,36 +77,25 @@ class MemberController extends Controller
 
                 // Proof-of-address document attaches to the address
                 if ($request->hasFile('proof_of_address')) {
-                    $this->storeDocument($address, $request->file('proof_of_address'), 'proof');
+                    $this->replaceDocument($address, $request->file('proof_of_address'), 'proof');
                 }
             }
 
             // Profile image attaches to the member
             if ($request->hasFile('profile_image')) {
-                $this->storeDocument($member, $request->file('profile_image'), 'profile');
+                $this->replaceDocument($member, $request->file('profile_image'), 'profile');
             }
 
             return to_route('members.show', $member)->with('ok','Member created.');
         });
     }
 
-    public function show(Member $member)
-    {
-        $member->load(['addresses.type', 'documents', 'referrer']);
-        return view('members.show', compact('member'));
-    }
-
-    public function edit(Member $member)
-    {
-        $member->load(['addresses.type', 'documents']);
-        $addressTypes = AddressType::where('status', true)->orderBy('name')->get();
-        return view('members.edit', compact('member','addressTypes'));
-    }
 
     public function update(UpdateMemberRequest $request, Member $member)
     {
         $data = $request->validated();
-
+        
+        
         return DB::transaction(function () use ($member, $data, $request) {
             $member->update([
                 'name'  => $data['name'],
@@ -131,7 +121,7 @@ class MemberController extends Controller
 
             // Files (optional re-upload)
             if ($request->hasFile('profile_image')) {
-                $this->storeDocument($member, $request->file('profile_image'), 'profile');
+                $this->replaceDocument($member, $request->file('profile_image'), 'profile');
             }
             if ($request->hasFile('proof_of_address')) {
                 // attach proof to first address (or create a default if none)
@@ -139,7 +129,7 @@ class MemberController extends Controller
                     'address_type_id' => AddressType::where('status',true)->value('id'),
                     'line1' => 'N/A', 'city' => 'N/A', 'country' => 'MY'
                 ]);
-                $this->storeDocument($address, $request->file('proof_of_address'), 'proof');
+                $this->replaceDocument($address, $request->file('proof_of_address'), 'proof');
             }
 
             return to_route('members.show', $member)->with('ok','Member updated.');
@@ -148,7 +138,7 @@ class MemberController extends Controller
 
     public function destroy(Member $member)
     {
-        $member->delete();
+        //$member->delete();
         return to_route('members.index')->with('ok','Member deleted.');
     }
 
@@ -182,12 +172,26 @@ class MemberController extends Controller
         }, 'members.csv', ['Content-Type' => 'text/csv']);
     }
 
+    public function destroyProfileImage(Member $member)
+    {
+        $member->documents()->where('type','profile')->get()->each->delete();
+        return back()->with('ok','Profile image removed.');
+    }
+
+    public function destroyProof(Member $member)
+    {
+        $member->documents()->where('type','proof')->get()->each->delete();
+        return back()->with('ok', 'Proof of address removed.');
+    }
+
     private function uniqueReferralCode(): string
     {
-        // Simple unique token; replace with your chosen format if needed
-        do {
+        do 
+        {
             $code = Str::upper(Str::random(8));
-        } while (Member::where('referral_code', $code)->exists());
+        } 
+        while (Member::where('referral_code', $code)->exists());
+
         return $code;
     }
 
@@ -202,4 +206,12 @@ class MemberController extends Controller
             'mime_type'     => $file->getMimeType(),
         ]);
     }
+
+    private function replaceDocument($model, UploadedFile $file, string $type): Document
+    {
+        $model->documents()->where('type', $type)->get()->each->delete();
+
+        return $this->storeDocument($model, $file, $type);
+    }
+
 }

@@ -22,4 +22,9 @@ class Address extends Model
     public function documents(): Relations\MorphMany {
         return $this->morphMany(Document::class, 'documentable');
     }
+
+    public function proof()
+    {
+        return $this->morphOne(Document::class, 'documentable')->where('type', 'proof');
+    }
 }

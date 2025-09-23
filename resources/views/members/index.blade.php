@@ -12,7 +12,7 @@
 <table>
   <thead>
     <tr>
-      <th>#</th><th>Name</th><th>Email</th><th>Referral Code</th><th>Referrer</th><th></th>
+      <th>User Id</th><th>Name</th><th>Email</th><th>Referral Code</th><th>Referrer</th><th></th>
     </tr>
   </thead>
   <tbody>
@@ -24,13 +24,12 @@
       <td>{{ $m->referral_code }}</td>
       <td>{{ optional($m->referrer)->email }}</td>
       <td>
-        <a href="{{ route('members.show',$m) }}">View</a> |
-        <a href="{{ route('members.edit',$m) }}">Edit</a>
+        <a href="{{ route('members.show',$m) }}">View</a>
       </td>
     </tr>
     @endforeach
   </tbody>
 </table>
 
-{{ $members->links() }}
+{{ $members->links('pagination::bootstrap-4') }}
 @endsection
