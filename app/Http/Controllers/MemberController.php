@@ -14,34 +14,17 @@ use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Log;
 
 class MemberController extends Controller
 {
    public function index(Request $request)
     {
-        $q = $request->string('q')->toString();
-        $ref = $request->string('ref')->toString();
+        $q   = $request->input('q');
+        $ref = $request->input('ref');
 
-        $members = Member::query()
-            ->with(['referrer'])
-            ->when($q, function ($query) use ($q) {
-                $query->where(function ($w) use ($q) {
-                    $w->where('name','like',"%{$q}%")
-                      ->orWhere('email','like',"%{$q}%");
-                });
-            })
-            ->when($ref, function ($query) use ($ref) {
-                $query->where('referral_code','like',"%{$ref}%")
-                      ->orWhereHas('referrer', function ($r) use ($ref) {
-                          $r->where('name','like',"%{$ref}%")
-                            ->orWhere('email','like',"%{$ref}%")
-                            ->orWhere('referral_code','like',"%{$ref}%");
-                      });
-            })
-            ->orderByDesc('id')
-            ->paginate(10)
-            ->withQueryString();
+        $members = Member::filter($q, $ref)   
+                     ->paginate(10)      
+                     ->withQueryString(); 
 
         return view('members.index', compact('members','q','ref'));
     }
@@ -55,9 +38,7 @@ class MemberController extends Controller
 
     public function show(Member $member)
     {
-        Log::debug($member);
         $member->load(['addresses.type', 'documents', 'referrer']);
-        Log::debug($member);
         return view('members.show', compact('member'));
     }
 
@@ -112,8 +93,6 @@ class MemberController extends Controller
 
     public function update(UpdateMemberRequest $request, Member $member)
     {
-        Log::debug('updattasdasdaste');
-        Log::debug($request);
         $data = $request->validated();
         
         
@@ -159,7 +138,6 @@ class MemberController extends Controller
 
     public function destroy(Member $member)
     {
-        Log::debug('destroy');
         //$member->delete();
         return to_route('members.index')->with('ok','Member deleted.');
     }
@@ -208,10 +186,12 @@ class MemberController extends Controller
 
     private function uniqueReferralCode(): string
     {
-        // Simple unique token; replace with your chosen format if needed
-        do {
+        do 
+        {
             $code = Str::upper(Str::random(8));
-        } while (Member::where('referral_code', $code)->exists());
+        } 
+        while (Member::where('referral_code', $code)->exists());
+
         return $code;
     }
 
@@ -229,10 +209,8 @@ class MemberController extends Controller
 
     private function replaceDocument($model, UploadedFile $file, string $type): Document
     {
-        // 1) delete existing “type” docs (this triggers Document::deleting → file removal)
         $model->documents()->where('type', $type)->get()->each->delete();
 
-        // 2) store the new one (reuses your existing storeDocument method)
         return $this->storeDocument($model, $file, $type);
     }
 
